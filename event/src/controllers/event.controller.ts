@@ -5,7 +5,7 @@ import { logger } from '../utils/logger.utils';
 import * as dotenv from 'dotenv';
 import { ImageData } from '../interfaces/imageData.interface';
 import { ProductAttribute } from '../interfaces/productAttribute.interface';
-import { createApiRoot } from '../client/create.client';  // Import the CommerceTools client
+import { createApiRoot } from '../client/create.client';
 import { ClientResponse } from '@commercetools/platform-sdk';
 import {
     ProductUpdate,
@@ -22,7 +22,6 @@ const vertex_ai = new VertexAI({
 });
 const model = 'gemini-1.5-flash-002';
 
-// Function to get product data from image using Google Vision API
 async function getImageData(imageURL: string): Promise<ImageData> {
     const request = {
         image: { source: { imageUri: imageURL } },
@@ -49,7 +48,6 @@ async function getImageData(imageURL: string): Promise<ImageData> {
     };
 }
 
-// Function to generate description using VertexAI
 async function generateEnhancedDescription(imageData: ImageData): Promise<string> {
     const safetySettings = [
         { category: 'HARM_CATEGORY_HATE_SPEECH' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
@@ -71,13 +69,29 @@ async function generateEnhancedDescription(imageData: ImageData): Promise<string
     const chat = generativeModel.startChat({});
 
     const prompt = {
-      text: `As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
-      Labels: ${imageData.labels}
-      Objects detected: ${imageData.objects}
-      Dominant colors: ${imageData.colors.join(', ')}
-      Text detected: ${imageData.detectedText}
-      Web entities: ${imageData.webEntities}`
-  };  
+        text: `As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
+        Labels: ${imageData.labels}
+        Objects detected: ${imageData.objects}
+        Dominant colors: ${imageData.colors.join(', ')}
+        Text detected: ${imageData.detectedText}
+        Web entities: ${imageData.webEntities}
+    
+        Guidelines:
+        1. Use a professional, engaging tone suitable for e-commerce.
+        2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
+        3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
+        4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
+        5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
+        6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
+        7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
+        8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
+        9. Keep the description concise but descriptive, within 100-150 words.
+        10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
+        11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
+        
+        Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.`
+    };
+    
 
     const result = await chat.sendMessage([prompt]);
 
@@ -91,22 +105,19 @@ async function generateEnhancedDescription(imageData: ImageData): Promise<string
 async function updateProductDescription(productId: string, description: string): Promise<ClientResponse<any>> {
     const apiRoot = createApiRoot();
 
-    // Fetch the current product data to get the version
     const productResponse = await apiRoot.products().withId({ ID: productId }).get().execute();
     const currentProduct = productResponse.body;
     const currentVersion = currentProduct.version;
 
-    // Prepare update actions as ProductSetDescriptionAction
     const updateActions: ProductUpdateAction[] = [
         {
             action: 'setDescription',
             description: {
-                en: description  // Assuming the description is in English
+                en: description  
             }
         } as ProductSetDescriptionAction
     ];
 
-    // Send update request
     return await apiRoot.products().withId({ ID: productId }).post({
         body: {
             version: currentVersion,
@@ -159,14 +170,11 @@ export const post = async (request: Request, response: Response) => {
             });
         }
 
-        // Get image data using Google Vision
         const imageData = await getImageData(imageUrl);
         
-        // Generate description using Vertex AI
         const description = await generateEnhancedDescription(imageData);
         logger.info(`Product Description: ${description}`);
 
-        // Update product description in CommerceTools
         const updateResponse = await updateProductDescription(productId, description);
         logger.info(`Product description updated successfully: ${updateResponse.body}`);
 
