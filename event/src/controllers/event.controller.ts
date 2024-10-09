@@ -7,11 +7,7 @@ import { ImageData } from '../interfaces/imageData.interface';
 import { ProductAttribute } from '../interfaces/productAttribute.interface';
 import { createApiRoot } from '../client/create.client';
 import { ClientResponse } from '@commercetools/platform-sdk';
-import {
-    ProductUpdate,
-    ProductUpdateAction,
-    ProductSetDescriptionAction
-  } from '@commercetools/platform-sdk';
+import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools/platform-sdk';
 
 dotenv.config();
 
