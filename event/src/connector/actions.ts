@@ -4,10 +4,10 @@ import {
 } from '@commercetools/platform-sdk';
 import { ByProjectKeyRequestBuilder } from '@commercetools/platform-sdk/dist/declarations/src/generated/client/by-project-key-request-builder';
 
-const ORDER_SUBSCRIPTION_KEY =
+const PRODUCT_SUBSCRIPTION_KEY =
   'productCreatedSubscription';
 
-export async function createGcpPubSubOrderSubscription(
+export async function createGcpPubSubProductSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   topicName: string,
   projectId: string
@@ -25,12 +25,12 @@ async function createSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   destination: Destination
 ) {
-  await deleteOrderSubscription(apiRoot);
+  await deleteProductSubscription(apiRoot);
   await apiRoot
     .subscriptions()
     .post({
       body: {
-        key: ORDER_SUBSCRIPTION_KEY,
+        key: PRODUCT_SUBSCRIPTION_KEY,
         destination,
         messages: [
           {
@@ -43,7 +43,7 @@ async function createSubscription(
     .execute();
 }
 
-export async function deleteOrderSubscription(
+export async function deleteProductSubscription(
   apiRoot: ByProjectKeyRequestBuilder
 ): Promise<void> {
   const {
@@ -52,7 +52,7 @@ export async function deleteOrderSubscription(
     .subscriptions()
     .get({
       queryArgs: {
-        where: `key = "${ORDER_SUBSCRIPTION_KEY}"`,
+        where: `key = "${PRODUCT_SUBSCRIPTION_KEY}"`,
       },
     })
     .execute();
@@ -62,7 +62,7 @@ export async function deleteOrderSubscription(
 
     await apiRoot
       .subscriptions()
-      .withKey({ key: ORDER_SUBSCRIPTION_KEY })
+      .withKey({ key: PRODUCT_SUBSCRIPTION_KEY })
       .delete({
         queryArgs: {
           version: subscription.version,
