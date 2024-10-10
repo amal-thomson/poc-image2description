@@ -12,8 +12,8 @@ import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools
 dotenv.config();
 
 const visionClient = new vision.ImageAnnotatorClient({
-    project: process.env.GOOGLE_PROJECT,
-    location: process.env.GOOGLE_LOCATION
+    project: process.env.VISION_PID,
+    location: process.env.VISION_LOCATION
   });
   
 const vertex_ai = new VertexAI({
