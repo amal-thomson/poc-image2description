@@ -11,11 +11,16 @@ import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools
 
 dotenv.config();
 
-const visionClient = new vision.ImageAnnotatorClient();
+const visionClient = new vision.ImageAnnotatorClient({
+    project: process.env.GOOGLE_PROJECT,
+    location: process.env.GOOGLE_LOCATION
+  });
+  
 const vertex_ai = new VertexAI({
     project: process.env.GOOGLE_PROJECT,
     location: process.env.GOOGLE_LOCATION
 });
+
 const model = 'gemini-1.5-flash-002';
 
 async function getImageData(imageURL: string): Promise<ImageData> {
