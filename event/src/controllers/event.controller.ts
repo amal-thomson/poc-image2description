@@ -23,7 +23,7 @@ const visionClient = new vision.ImageAnnotatorClient({
   credentials: credentials,
 });
 
-const MODEL_NAME = 'gemini-1.5-flash-002';
+const MODEL_NAME = 'gemini-1.5-flash-001';
 
 async function getImageData(imageURL: string): Promise<ImageData> {
     logger.info(`Starting Cloud Vision AI processing for image: ${imageURL}`);
