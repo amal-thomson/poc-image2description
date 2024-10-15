@@ -11,15 +11,29 @@ import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools
 
 dotenv.config();
 
-const visionClient = new vision.ImageAnnotatorClient({
-    project: process.env.VISION_PID,
-    location: process.env.VISION_LOCATION
+const visionCredentials = {
+    type: process.env.mygcp_type,
+    project_id: process.env.mygcp_project_id,
+    private_key_id: process.env.mygcp_private_key_id,
+    private_key: process.env.mygcp_private_key,
+    client_email: process.env.mygcp_client_email,
+    client_id: process.env.mygcp_client_id,
+    auth_uri: process.env.mygcp_auth_uri,
+    token_uri: process.env.mygcp_token_uri,
+    auth_provider_x509_cert_url: process.env.mygcp_auth_provider_x509_cert_url,
+    client_x509_cert_url: process.env.mygcp_client_x509_cert_url,
+  };
+
+  const visionClient = new vision.ImageAnnotatorClient({
+    credentials: visionCredentials,
+    projectId: process.env.mygcp_project_id,
+    location: process.env.mygcp_location
   });
   
-const vertex_ai = new VertexAI({
-    project: process.env.GOOGLE_PROJECT,
-    location: process.env.GOOGLE_LOCATION
-});
+  const vertex_ai = new VertexAI({
+    project: process.env.mygcp_project_id,
+    location: process.env.mygcp_location
+  });
 
 const model = 'gemini-1.5-flash-002';
 

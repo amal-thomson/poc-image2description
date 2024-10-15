@@ -24,9 +24,39 @@ deployAs:
         - key: CTP_SCOPE
           description: commercetools Composable Commerce client scope
           required: true
-        - key: VISION_PID
-          description: commercetools Composable Commerce client scope
+        - key: mygcp_type
+          description: gcp-type
           required: true
-        - key: VISION_LOCATION
-          description: commercetools Composable Commerce client scope
+        - key: mygcp_project_id
+          description: gcp-project
+          required: true
+        - key: mygcp_private_key_id
+          description: gcp-private key id
+          required: true
+        - key: mygcp_private_key
+          description: gcp-private key
+          required: true
+        - key: mygcp_client_email
+          description: gcp-client email
+          required: true
+        - key: mygcp_client_id
+          description: gcp-client-id
+          required: true
+        - key: mygcp_auth_uri
+          description: gcp-uri
+          required: true
+        - key: mygcp_token_uri
+          description: gcp-token
+          required: true
+        - key: mygcp_auth_provider_x509_cert_url
+          description: gcp-auth
+          required: true
+        - key: mygcp_client_x509_cert_url
+          description: gcp-client
+          required: true
+        - key: mygcp_universe_domain
+          description: gcp-domain
+          required: true
+        - key: mygcp_location
+          description: gcp-location
           required: true
