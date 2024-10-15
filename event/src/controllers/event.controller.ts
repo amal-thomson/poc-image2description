@@ -23,17 +23,10 @@ const visionClient = new vision.ImageAnnotatorClient({
   credentials: credentials,
 });
 
-const vertex_ai = new VertexAI({
-  project: credentials.project_id,  
-  location: 'us-central1',
-});
-
-console.log("Vertex AI P_Id", credentials.project_id);
-console.log("Private Key", credentials.client_email);
-
-const model = 'gemini-1.5-flash-002';
+const MODEL_NAME = 'gemini-1.5-flash-002';
 
 async function getImageData(imageURL: string): Promise<ImageData> {
+    logger.info(`Starting Cloud Vision AI processing for image: ${imageURL}`);
     const request = {
         image: { source: { imageUri: imageURL } },
         features: [
@@ -47,7 +40,7 @@ async function getImageData(imageURL: string): Promise<ImageData> {
     };
     const [result] = await visionClient.annotateImage(request);
 
-    return {
+    const imageData = {
         labels: result.labelAnnotations?.map((label: any) => label.description).join(', ') || 'No labels detected',
         objects: result.localizedObjectAnnotations?.map((obj: any) => obj.name).join(', ') || 'No objects detected',
         colors: result.imagePropertiesAnnotation?.dominantColors?.colors?.slice(0, 3).map((color: any) => {
@@ -57,9 +50,18 @@ async function getImageData(imageURL: string): Promise<ImageData> {
         detectedText: result.textAnnotations?.[0]?.description || 'No text detected',
         webEntities: result.webDetection?.webEntities?.slice(0, 5).map((entity: any) => entity.description).join(', ') || 'No web entities detected'
     };
+
+    logger.info('Cloud Vision AI processing completed', { imageData });
+    return imageData;
 }
 
 async function generateEnhancedDescription(imageData: ImageData): Promise<string> {
+    logger.info('Starting Vertex AI processing');
+    const vertex_ai = new VertexAI({
+        project: credentials.project_id,  
+        location: 'us-central1',
+    });
+
     const safetySettings = [
         { category: 'HARM_CATEGORY_HATE_SPEECH' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
         { category: 'HARM_CATEGORY_DANGEROUS_CONTENT' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
@@ -67,53 +69,66 @@ async function generateEnhancedDescription(imageData: ImageData): Promise<string
         { category: 'HARM_CATEGORY_HARASSMENT' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold }
     ];
 
-    const generativeModel = vertex_ai.preview.getGenerativeModel({
-        model: model,
-        generationConfig: {
-            maxOutputTokens: 8192,
-            temperature: 0.7,
-            topP: 0.95,
-        },
-        safetySettings
-    });
+    try {
+        const generativeModel = vertex_ai.preview.getGenerativeModel({
+            model: MODEL_NAME,
+            generationConfig: {
+                maxOutputTokens: 8192,
+                temperature: 0.7,
+                topP: 0.95,
+            },
+            safetySettings
+        });
 
-    const chat = generativeModel.startChat({});
+        const chat = generativeModel.startChat({});
 
-    const prompt = {
-        text: `As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
-        Labels: ${imageData.labels}
-        Objects detected: ${imageData.objects}
-        Dominant colors: ${imageData.colors.join(', ')}
-        Text detected: ${imageData.detectedText}
-        Web entities: ${imageData.webEntities}
-    
-        Guidelines:
-        1. Use a professional, engaging tone suitable for e-commerce.
-        2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
-        3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
-        4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
-        5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
-        6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
-        7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
-        8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
-        9. Keep the description concise but descriptive, within 100-150 words.
-        10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
-        11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
+        const prompt = {
+            text: `As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
+            Labels: ${imageData.labels}
+            Objects detected: ${imageData.objects}
+            Dominant colors: ${imageData.colors.join(', ')}
+            Text detected: ${imageData.detectedText}
+            Web entities: ${imageData.webEntities}
         
-        Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.`
-    };
-    
+            Guidelines:
+            1. Use a professional, engaging tone suitable for e-commerce.
+            2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
+            3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
+            4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
+            5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
+            6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
+            7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
+            8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
+            9. Keep the description concise but descriptive, within 100-150 words.
+            10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
+            11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
+            
+            Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.`
+        };
 
-    const result = await chat.sendMessage([prompt]);
+        logger.info('Sending prompt to Vertex AI');
+        const result = await chat.sendMessage([prompt]);
 
-    if (!result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        throw new Error('No valid response received from the model');
+        if (!result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            throw new Error('No valid response received from the model');
+        }
+
+        const generatedDescription = result.response.candidates[0].content.parts[0].text;
+        logger.info('Vertex AI processing completed', { generatedDescription });
+        return generatedDescription;
+    } catch (error: any) {
+        if (error.message.includes('Permission \'aiplatform.endpoints.predict\' denied')) {
+            logger.error('Permission denied when accessing Vertex AI. Please check the service account permissions.', error);
+            throw new Error('Permission denied when accessing Vertex AI. Please check the service account permissions.');
+        } else {
+            logger.error('Error generating enhanced description:', error);
+            throw error;
+        }
     }
-
-    return result.response.candidates[0].content.parts[0].text;
 }
 
 async function updateProductDescription(productId: string, description: string): Promise<ClientResponse<any>> {
+    logger.info(`Updating product description for product ID: ${productId}`);
     const apiRoot = createApiRoot();
 
     const productResponse = await apiRoot.products().withId({ ID: productId }).get().execute();
@@ -129,12 +144,15 @@ async function updateProductDescription(productId: string, description: string):
         } as ProductSetDescriptionAction
     ];
 
-    return await apiRoot.products().withId({ ID: productId }).post({
+    const updateResponse = await apiRoot.products().withId({ ID: productId }).post({
         body: {
             version: currentVersion,
             actions: updateActions
         }
     }).execute();
+
+    logger.info('Product description updated successfully', { productId, updateResponse: updateResponse.body });
+    return updateResponse;
 }
 
 export const post = async (request: Request, response: Response) => {
@@ -173,7 +191,7 @@ export const post = async (request: Request, response: Response) => {
         const genDescriptionValue = genDescriptionAttr?.value;
 
         if (genDescriptionValue !== 'true') {
-            logger.info('The option for automatic description generation is not enabled.');
+            logger.info('The option for automatic description generation is not enabled.', { productId, imageUrl });
             return response.status(200).json({
                 message: 'The option for automatic description generation is not enabled.',
                 productId,
@@ -184,10 +202,16 @@ export const post = async (request: Request, response: Response) => {
         const imageData = await getImageData(imageUrl);
         
         const description = await generateEnhancedDescription(imageData);
-        logger.info(`Product Description: ${description}`);
 
         const updateResponse = await updateProductDescription(productId, description);
-        logger.info(`Product description updated successfully: ${updateResponse.body}`);
+
+        logger.info('Process completed successfully', { 
+            productId, 
+            imageUrl, 
+            imageAnalysis: imageData, 
+            generatedDescription: description,
+            updateResponse: updateResponse.body 
+        });
 
         return response.status(200).json({
             productId,
@@ -199,11 +223,19 @@ export const post = async (request: Request, response: Response) => {
 
     } catch (error) {
         if (error instanceof Error) {
-            logger.error('Error processing request', { error: error.message });
-            return response.status(500).json({
-                error: 'Internal server error. Failed to process request.',
-                details: error.message,
-            });
+            if (error.message.includes('Permission denied when accessing Vertex AI')) {
+                logger.error('Vertex AI permission error', { error: error.message });
+                return response.status(403).json({
+                    error: 'Permission denied when accessing Vertex AI',
+                    details: 'Please check the service account permissions and ensure the Vertex AI API is enabled.',
+                });
+            } else {
+                logger.error('Error processing request', { error: error.message });
+                return response.status(500).json({
+                    error: 'Internal server error. Failed to process request.',
+                    details: error.message,
+                });
+            }
         } else {
             logger.error('Unknown error occurred', { error: String(error) });
             return response.status(500).json({
