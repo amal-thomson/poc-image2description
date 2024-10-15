@@ -10,30 +10,26 @@ import { ClientResponse } from '@commercetools/platform-sdk';
 import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools/platform-sdk';
 
 dotenv.config();
+const base64EncodedServiceAccount = process.env.BASE64_ENCODED_SERVICE_ACCOUNT;
 
-const visionCredentials = {
-    type: process.env.mygcp_type,
-    project_id: process.env.mygcp_project_id,
-    private_key_id: process.env.mygcp_private_key_id,
-    private_key: process.env.mygcp_private_key,
-    client_email: process.env.mygcp_client_email,
-    client_id: process.env.mygcp_client_id,
-    auth_uri: process.env.mygcp_auth_uri,
-    token_uri: process.env.mygcp_token_uri,
-    auth_provider_x509_cert_url: process.env.mygcp_auth_provider_x509_cert_url,
-    client_x509_cert_url: process.env.mygcp_client_x509_cert_url,
-  };
+if (!base64EncodedServiceAccount) {
+  throw new Error("BASE64_ENCODED_SERVICE_ACCOUNT environment variable is not set.");
+}
 
-  const visionClient = new vision.ImageAnnotatorClient({
-    credentials: visionCredentials,
-    projectId: process.env.mygcp_project_id,
-    location: process.env.mygcp_location
-  });
-  
-  const vertex_ai = new VertexAI({
-    project: process.env.mygcp_project_id,
-    location: process.env.mygcp_location
-  });
+const decodedServiceAccount = Buffer.from(base64EncodedServiceAccount, 'base64').toString('utf-8');
+const credentials = JSON.parse(decodedServiceAccount);
+const pid = credentials.project_id;
+
+logger.info(`Project ID: ${pid}`);
+
+const visionClient = new vision.ImageAnnotatorClient({
+  credentials: credentials,
+});
+
+const vertex_ai = new VertexAI({
+  project: credentials.project_id,  
+  location: 'us-central1',
+});
 
 const model = 'gemini-1.5-flash-002';
 
