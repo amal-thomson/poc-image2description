@@ -116,12 +116,19 @@ async function generateEnhancedDescription(imageData: ImageData): Promise<string
         const generatedDescription = result.response.candidates[0].content.parts[0].text;
         logger.info('Vertex AI processing completed', { generatedDescription });
         return generatedDescription;
+
     } catch (error: any) {
+        logger.error('Detailed error in Vertex AI processing:', {
+            error: error.message,
+            stack: error.stack,
+            projectId: credentials.project_id,
+            modelName: MODEL_NAME,
+            errorCode: error.code,
+            errorDetails: error.details,
+        });
         if (error.message.includes('Permission \'aiplatform.endpoints.predict\' denied')) {
-            logger.error('Permission denied when accessing Vertex AI. Please check the service account permissions.', error);
             throw new Error('Permission denied when accessing Vertex AI. Please check the service account permissions.');
         } else {
-            logger.error('Error generating enhanced description:', error);
             throw error;
         }
     }
@@ -245,3 +252,4 @@ export const post = async (request: Request, response: Response) => {
         }
     }
 };
+
