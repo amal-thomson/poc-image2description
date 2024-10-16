@@ -8,6 +8,7 @@ import { ProductAttribute } from '../interfaces/productAttribute.interface';
 import { createApiRoot } from '../client/create.client';
 import { ClientResponse } from '@commercetools/platform-sdk';
 import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools/platform-sdk';
+import { GoogleAuth } from 'google-auth-library';
 
 dotenv.config();
 const base64EncodedServiceAccount = process.env.BASE64_ENCODED_SERVICE_ACCOUNT;
@@ -19,11 +20,20 @@ if (!base64EncodedServiceAccount) {
 const decodedServiceAccount = Buffer.from(base64EncodedServiceAccount, 'base64').toString('utf-8');
 const credentials = JSON.parse(decodedServiceAccount);
 
-const visionClient = new vision.ImageAnnotatorClient({
-  credentials: credentials,
+const auth = new GoogleAuth({
+    credentials: credentials,
+    scopes: ['https://www.googleapis.com/auth/cloud-platform']
 });
 
-const MODEL_NAME = 'gemini-1.5-flash-001';
+const visionClient = new vision.ImageAnnotatorClient({
+    auth: auth,
+});  
+
+const PROJECT_ID = credentials.project_id;
+const REGION = 'us-central1';
+const MODEL_NAME = 'gemini-1.5-flash-002';
+
+const vertex_ai = new VertexAI({project: PROJECT_ID, location: REGION});
 
 async function getImageData(imageURL: string): Promise<ImageData> {
     logger.info(`Starting Cloud Vision AI processing for image: ${imageURL}`);
@@ -57,10 +67,6 @@ async function getImageData(imageURL: string): Promise<ImageData> {
 
 async function generateEnhancedDescription(imageData: ImageData): Promise<string> {
     logger.info('Starting Vertex AI processing');
-    const vertex_ai = new VertexAI({
-        project: credentials.project_id,  
-        location: 'us-central1',
-    });
 
     const safetySettings = [
         { category: 'HARM_CATEGORY_HATE_SPEECH' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
