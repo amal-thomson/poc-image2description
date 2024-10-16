@@ -27,4 +27,7 @@ deployAs:
         - key: BASE64_ENCODED_SERVICE_ACCOUNT
           description: GCP Service Account Details
           required: true
+        - key: GENERATIVE_AI_API_KEY
+          description: GENERATIVE AI API KEY to access Gemini 
+          required: true
         

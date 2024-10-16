@@ -1,20 +1,20 @@
 import { Request, Response } from 'express';
-import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
-import vision from '@google-cloud/vision';
-import { logger } from '../utils/logger.utils';
-import * as dotenv from 'dotenv';
 import { ImageData } from '../interfaces/imageData.interface';
 import { ProductAttribute } from '../interfaces/productAttribute.interface';
 import { createApiRoot } from '../client/create.client';
 import { ClientResponse } from '@commercetools/platform-sdk';
 import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools/platform-sdk';
 import { GoogleAuth } from 'google-auth-library';
+import vision from '@google-cloud/vision';
+import { logger } from '../utils/logger.utils';
+import * as dotenv from 'dotenv';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 dotenv.config();
 const base64EncodedServiceAccount = process.env.BASE64_ENCODED_SERVICE_ACCOUNT;
 
 if (!base64EncodedServiceAccount) {
-  throw new Error("BASE64_ENCODED_SERVICE_ACCOUNT environment variable is not set.");
+    throw new Error("BASE64_ENCODED_SERVICE_ACCOUNT environment variable is not set.");
 }
 
 const decodedServiceAccount = Buffer.from(base64EncodedServiceAccount, 'base64').toString('utf-8');
@@ -27,13 +27,18 @@ const auth = new GoogleAuth({
 
 const visionClient = new vision.ImageAnnotatorClient({
     auth: auth,
-});  
+});
 
 const PROJECT_ID = credentials.project_id;
 const REGION = 'us-central1';
-const MODEL_NAME = 'gemini-1.5-flash-002';
+const API_KEY = process.env.GENERATIVE_AI_API_KEY;
 
-const vertex_ai = new VertexAI({project: PROJECT_ID, location: REGION});
+if (!API_KEY) {
+    throw new Error("GENERATIVE_AI_API_KEY environment variable is not set.");
+}
+
+const genAI = new GoogleGenerativeAI(API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
 
 async function getImageData(imageURL: string): Promise<ImageData> {
     logger.info(`Starting Cloud Vision AI processing for image: ${imageURL}`);
@@ -66,77 +71,48 @@ async function getImageData(imageURL: string): Promise<ImageData> {
 }
 
 async function generateEnhancedDescription(imageData: ImageData): Promise<string> {
-    logger.info('Starting Vertex AI processing');
+    logger.info('Starting Google Generative AI processing');
 
-    const safetySettings = [
-        { category: 'HARM_CATEGORY_HATE_SPEECH' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold },
-        { category: 'HARM_CATEGORY_HARASSMENT' as HarmCategory, threshold: 'BLOCK_NONE' as HarmBlockThreshold }
-    ];
+    const prompt = `
+        As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
+        Labels: ${imageData.labels}
+        Objects detected: ${imageData.objects}
+        Dominant colors: ${imageData.colors.join(', ')}
+        Text detected: ${imageData.detectedText}
+        Web entities: ${imageData.webEntities}
+
+        Guidelines:
+        1. Use a professional, engaging tone suitable for e-commerce.
+        2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
+        3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
+        4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
+        5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
+        6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
+        7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
+        8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
+        9. Keep the description concise but descriptive, within 100-150 words.
+        10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
+        11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
+        
+        Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.
+    `;
 
     try {
-        const generativeModel = vertex_ai.preview.getGenerativeModel({
-            model: MODEL_NAME,
-            generationConfig: {
-                maxOutputTokens: 8192,
-                temperature: 0.7,
-                topP: 0.95,
-            },
-            safetySettings
-        });
+        logger.info('Sending prompt to Google Generative AI');
+        const result = await model.generateContent(prompt);
 
-        const chat = generativeModel.startChat({});
-
-        const prompt = {
-            text: `As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
-            Labels: ${imageData.labels}
-            Objects detected: ${imageData.objects}
-            Dominant colors: ${imageData.colors.join(', ')}
-            Text detected: ${imageData.detectedText}
-            Web entities: ${imageData.webEntities}
-        
-            Guidelines:
-            1. Use a professional, engaging tone suitable for e-commerce.
-            2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
-            3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
-            4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
-            5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
-            6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
-            7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
-            8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
-            9. Keep the description concise but descriptive, within 100-150 words.
-            10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
-            11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
-            
-            Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.`
-        };
-
-        logger.info('Sending prompt to Vertex AI');
-        const result = await chat.sendMessage([prompt]);
-
-        if (!result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            throw new Error('No valid response received from the model');
-        }
-
-        const generatedDescription = result.response.candidates[0].content.parts[0].text;
-        logger.info('Vertex AI processing completed', { generatedDescription });
+        const generatedDescription = result.response.text();
+        logger.info('Google Generative AI processing completed', { generatedDescription });
         return generatedDescription;
 
     } catch (error: any) {
-        logger.error('Detailed error in Vertex AI processing:', {
+        logger.error('Detailed error in Google Generative AI processing:', {
             error: error.message,
             stack: error.stack,
             projectId: credentials.project_id,
-            modelName: MODEL_NAME,
-            errorCode: error.code,
-            errorDetails: error.details,
+            modelName: "gemini-1.5-flash-002",
         });
-        if (error.message.includes('Permission \'aiplatform.endpoints.predict\' denied')) {
-            throw new Error('Permission denied when accessing Vertex AI. Please check the service account permissions.');
-        } else {
-            throw error;
-        }
+        throw error;
     }
 }
 
@@ -236,26 +212,15 @@ export const post = async (request: Request, response: Response) => {
 
     } catch (error) {
         if (error instanceof Error) {
-            if (error.message.includes('Permission denied when accessing Vertex AI')) {
-                logger.error('Vertex AI permission error', { error: error.message });
-                return response.status(403).json({
-                    error: 'Permission denied when accessing Vertex AI',
-                    details: 'Please check the service account permissions and ensure the Vertex AI API is enabled.',
-                });
-            } else {
-                logger.error('Error processing request', { error: error.message });
-                return response.status(500).json({
-                    error: 'Internal server error. Failed to process request.',
-                    details: error.message,
-                });
-            }
-        } else {
-            logger.error('Unknown error occurred', { error: String(error) });
+            logger.error('Error processing request', { error: error.message });
             return response.status(500).json({
-                error: 'Internal server error.',
-                details: 'Unknown error occurred',
+                error: 'Internal server error. Failed to process request.',
+                details: error.message,
             });
         }
+        logger.error('Unexpected error', { error });
+        return response.status(500).json({
+            error: 'Unexpected error occurred.',
+        });
     }
 };
-
