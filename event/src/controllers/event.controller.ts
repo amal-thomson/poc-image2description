@@ -1,164 +1,26 @@
 import { Request, Response } from 'express';
-import { ImageData } from '../interfaces/imageData.interface';
-import { ProductAttribute } from '../interfaces/productAttribute.interface';
-import { createApiRoot } from '../client/create.client';
-import { ClientResponse } from '@commercetools/platform-sdk';
-import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools/platform-sdk';
-import { GoogleAuth } from 'google-auth-library';
-import vision from '@google-cloud/vision';
 import { logger } from '../utils/logger.utils';
-import * as dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-dotenv.config();
-const base64EncodedServiceAccount = process.env.BASE64_ENCODED_SERVICE_ACCOUNT;
-
-if (!base64EncodedServiceAccount) {
-    throw new Error("BASE64_ENCODED_SERVICE_ACCOUNT environment variable is not set.");
-}
-
-const decodedServiceAccount = Buffer.from(base64EncodedServiceAccount, 'base64').toString('utf-8');
-const credentials = JSON.parse(decodedServiceAccount);
-
-const auth = new GoogleAuth({
-    credentials: credentials,
-    scopes: ['https://www.googleapis.com/auth/cloud-platform']
-});
-
-const visionClient = new vision.ImageAnnotatorClient({
-    auth: auth,
-});
-
-const PROJECT_ID = credentials.project_id;
-const REGION = 'us-central1';
-const API_KEY = process.env.GENERATIVE_AI_API_KEY;
-
-if (!API_KEY) {
-    throw new Error("GENERATIVE_AI_API_KEY environment variable is not set.");
-}
-
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
-
-async function getImageData(imageURL: string): Promise<ImageData> {
-    logger.info(`Starting Cloud Vision AI processing for image: ${imageURL}`);
-    const request = {
-        image: { source: { imageUri: imageURL } },
-        features: [
-            { type: 'LABEL_DETECTION' },
-            { type: 'OBJECT_LOCALIZATION' },
-            { type: 'IMAGE_PROPERTIES' },
-            { type: 'TEXT_DETECTION' },
-            { type: 'SAFE_SEARCH_DETECTION' },
-            { type: 'WEB_DETECTION' }
-        ]
-    };
-    const [result] = await visionClient.annotateImage(request);
-
-    const imageData = {
-        labels: result.labelAnnotations?.map((label: any) => label.description).join(', ') || 'No labels detected',
-        objects: result.localizedObjectAnnotations?.map((obj: any) => obj.name).join(', ') || 'No objects detected',
-        colors: result.imagePropertiesAnnotation?.dominantColors?.colors?.slice(0, 3).map((color: any) => {
-            const rgb = color.color;
-            return `${Math.round(rgb.red)}, ${Math.round(rgb.green)}, ${Math.round(rgb.blue)}`;
-        }) || ['No colors detected'],
-        detectedText: result.textAnnotations?.[0]?.description || 'No text detected',
-        webEntities: result.webDetection?.webEntities?.slice(0, 5).map((entity: any) => entity.description).join(', ') || 'No web entities detected'
-    };
-
-    logger.info('Cloud Vision AI processing completed', { imageData });
-    return imageData;
-}
-
-async function generateEnhancedDescription(imageData: ImageData): Promise<string> {
-    logger.info('Starting Google Generative AI processing');
-
-    const prompt = `
-        As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
-        Labels: ${imageData.labels}
-        Objects detected: ${imageData.objects}
-        Dominant colors: ${imageData.colors.join(', ')}
-        Text detected: ${imageData.detectedText}
-        Web entities: ${imageData.webEntities}
-
-        Guidelines:
-        1. Use a professional, engaging tone suitable for e-commerce.
-        2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
-        3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
-        4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
-        5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
-        6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
-        7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
-        8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
-        9. Keep the description concise but descriptive, within 100-150 words.
-        10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
-        11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
-        
-        Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.
-    `;
-
-    try {
-        logger.info('Sending prompt to Google Generative AI');
-        const result = await model.generateContent(prompt);
-
-        const generatedDescription = result.response.text();
-        logger.info('Google Generative AI processing completed', { generatedDescription });
-        return generatedDescription;
-
-    } catch (error: any) {
-        logger.error('Detailed error in Google Generative AI processing:', {
-            error: error.message,
-            stack: error.stack,
-            projectId: credentials.project_id,
-            modelName: "gemini-1.5-flash-002",
-        });
-        throw error;
-    }
-}
-
-async function updateProductDescription(productId: string, description: string): Promise<ClientResponse<any>> {
-    logger.info(`Updating product description for product ID: ${productId}`);
-    const apiRoot = createApiRoot();
-
-    const productResponse = await apiRoot.products().withId({ ID: productId }).get().execute();
-    const currentProduct = productResponse.body;
-    const currentVersion = currentProduct.version;
-
-    const updateActions: ProductUpdateAction[] = [
-        {
-            action: 'setDescription',
-            description: {
-                en: description  
-            }
-        } as ProductSetDescriptionAction
-    ];
-
-    const updateResponse = await apiRoot.products().withId({ ID: productId }).post({
-        body: {
-            version: currentVersion,
-            actions: updateActions
-        }
-    }).execute();
-
-    logger.info('Product description updated successfully', { productId, updateResponse: updateResponse.body });
-    return updateResponse;
-}
+import { productAnalysis } from '../services/productAnalysis.service';
+import { generateProductDescription } from '../services/descriptionGeneration.service';
+import { updateProductDescription } from '../repositories/product.repository';
+import { ProductAttribute } from '../interfaces/productAttribute.interface';
 
 export const post = async (request: Request, response: Response) => {
     try {
+
         if (!request.body.message) {
             logger.error('No Pub/Sub message received.');
-            return response.status(400).json({ error: 'No Pub/Sub message received' });
         }
 
         const pubSubMessage = request.body.message;
+
         const decodedData = pubSubMessage.data
             ? Buffer.from(pubSubMessage.data, 'base64').toString().trim()
             : undefined;
 
         if (!decodedData) {
             logger.error('No data found in Pub/Sub message.');
-            return response.status(400).json({ error: 'No data found in Pub/Sub message' });
+            return response.status(400).send({ error: 'No data found in Pub/Sub message' });
         }
 
         const jsonData = JSON.parse(decodedData);
@@ -168,7 +30,7 @@ export const post = async (request: Request, response: Response) => {
 
         if (!productId || !imageUrl) {
             logger.error('productId or imageUrl is missing from the Pub/Sub message data.');
-            return response.status(400).json({ error: 'productId or imageUrl is missing' });
+            return response.status(400).send({ error: 'productId or imageUrl is missing' });
         }
 
         logger.info(`Processing product ID: ${productId}`);
@@ -181,23 +43,23 @@ export const post = async (request: Request, response: Response) => {
 
         if (genDescriptionValue !== 'true') {
             logger.info('The option for automatic description generation is not enabled.', { productId, imageUrl });
-            return response.status(200).json({
+            return response.status(200).send({
                 message: 'The option for automatic description generation is not enabled.',
                 productId,
                 imageUrl,
             });
         }
 
-        const imageData = await getImageData(imageUrl);
+        const imageData = await productAnalysis(imageUrl);
         
-        const description = await generateEnhancedDescription(imageData);
+        const description = await generateProductDescription(imageData);
 
         const updateResponse = await updateProductDescription(productId, description);
 
         logger.info('Process completed successfully', { 
             productId, 
             imageUrl, 
-            imageAnalysis: imageData, 
+            productAnalysis: imageData, 
             generatedDescription: description,
             updateResponse: updateResponse.body 
         });
@@ -206,7 +68,7 @@ export const post = async (request: Request, response: Response) => {
             productId,
             imageUrl,
             description,
-            imageAnalysis: imageData,
+            productAnalysis: imageData,
             commerceToolsUpdate: updateResponse.body
         });
 
