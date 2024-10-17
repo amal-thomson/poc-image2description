@@ -1,11 +1,7 @@
-import {
-  Destination,
-  GoogleCloudPubSubDestination,
-} from '@commercetools/platform-sdk';
+import { Destination, GoogleCloudPubSubDestination, SubscriptionDraft } from '@commercetools/platform-sdk';
 import { ByProjectKeyRequestBuilder } from '@commercetools/platform-sdk/dist/declarations/src/generated/client/by-project-key-request-builder';
 
-const PRODUCT_SUBSCRIPTION_KEY =
-  'productCreatedSubscription';
+const PRODUCT_SUBSCRIPTION_KEY = 'productCreatedSubscription';
 
 export async function createGcpPubSubProductSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
@@ -20,25 +16,35 @@ export async function createGcpPubSubProductSubscription(
   await createSubscription(apiRoot, destination);
 }
 
-
 async function createSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   destination: Destination
 ) {
   await deleteProductSubscription(apiRoot);
+  
+  const subscriptionDraft: SubscriptionDraft = {
+    key: PRODUCT_SUBSCRIPTION_KEY,
+    destination,
+    messages: [
+      {
+        resourceTypeId: 'product',
+        types: ['ProductCreated'],
+      },
+    ],
+    changes: [
+      {
+        resourceTypeId: 'product',
+      },
+    ],
+    format: {
+      type: 'Platform',
+    },
+  };
+
   await apiRoot
     .subscriptions()
     .post({
-      body: {
-        key: PRODUCT_SUBSCRIPTION_KEY,
-        destination,
-        messages: [
-          {
-            resourceTypeId: 'product',
-            types: ['ProductCreated'],
-          },
-        ],
-      },
+      body: subscriptionDraft,
     })
     .execute();
 }
