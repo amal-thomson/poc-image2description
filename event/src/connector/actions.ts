@@ -1,9 +1,9 @@
-import { Destination, GoogleCloudPubSubDestination, SubscriptionDraft } from '@commercetools/platform-sdk';
 import { ByProjectKeyRequestBuilder } from '@commercetools/platform-sdk/dist/declarations/src/generated/client/by-project-key-request-builder';
-
+import { GoogleCloudPubSubDestination } from '@commercetools/platform-sdk';
+ 
 const PRODUCT_SUBSCRIPTION_KEY = 'productCreatedSubscription';
-
-export async function createGcpPubSubProductSubscription(
+ 
+export async function createProductPublishSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   topicName: string,
   projectId: string
@@ -13,44 +13,29 @@ export async function createGcpPubSubProductSubscription(
     topic: topicName,
     projectId,
   };
-  await createSubscription(apiRoot, destination);
-}
-
-async function createSubscription(
-  apiRoot: ByProjectKeyRequestBuilder,
-  destination: Destination
-) {
-  await deleteProductSubscription(apiRoot);
-  
-  const subscriptionDraft: SubscriptionDraft = {
-    key: PRODUCT_SUBSCRIPTION_KEY,
-    destination,
-    messages: [
-      {
-        resourceTypeId: 'product',
-        types: ['ProductCreated'],
-      },
-    ],
-    changes: [
-      {
-        resourceTypeId: 'product',
-      },
-    ],
-    format: {
-      type: 'Platform',
-    },
-  };
-
+ 
+  await deleteSubscription(apiRoot, PRODUCT_SUBSCRIPTION_KEY);
+ 
   await apiRoot
     .subscriptions()
     .post({
-      body: subscriptionDraft,
+      body: {
+        key: PRODUCT_SUBSCRIPTION_KEY,
+        destination,
+        messages: [
+          {
+            resourceTypeId: 'product',
+            types: ['ProductCreated'],
+          },
+        ],
+      },
     })
     .execute();
 }
-
-export async function deleteProductSubscription(
-  apiRoot: ByProjectKeyRequestBuilder
+ 
+export async function deleteSubscription(
+  apiRoot: ByProjectKeyRequestBuilder,
+  subscriptionKey: string
 ): Promise<void> {
   const {
     body: { results: subscriptions },
@@ -58,14 +43,13 @@ export async function deleteProductSubscription(
     .subscriptions()
     .get({
       queryArgs: {
-        where: `key = "${PRODUCT_SUBSCRIPTION_KEY}"`,
+        where: `key="${PRODUCT_SUBSCRIPTION_KEY}"`,
       },
     })
     .execute();
-
+ 
   if (subscriptions.length > 0) {
     const subscription = subscriptions[0];
-
     await apiRoot
       .subscriptions()
       .withKey({ key: PRODUCT_SUBSCRIPTION_KEY })
