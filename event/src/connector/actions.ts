@@ -3,7 +3,7 @@ import { GoogleCloudPubSubDestination } from '@commercetools/platform-sdk';
  
 const PRODUCT_SUBSCRIPTION_KEY = 'productCreatedSubscription';
  
-export async function createProductPublishSubscription(
+export async function createProductCreatedSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   topicName: string,
   projectId: string
