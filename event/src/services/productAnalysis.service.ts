@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.utils';
 import { visionClient } from '../config/ai.config';
 
 export async function productAnalysis(imageURL: string): Promise<ImageData> {
-    logger.info(`Starting Cloud Vision AI processing for image: ${imageURL}`);
+    logger.info(`✅ Starting Vision AI for processing product image.`);
     const request = {
         image: { source: { imageUri: imageURL } },
         features: [
@@ -28,6 +28,6 @@ export async function productAnalysis(imageURL: string): Promise<ImageData> {
         webEntities: result.webDetection?.webEntities?.slice(0, 5).map((entity: any) => entity.description).join(', ') || 'No web entities detected'
     };
 
-    logger.info('Cloud Vision AI processing completed', { imageData });
+    logger.info('✅ Vision AI processing completed.');
     return imageData;
 }

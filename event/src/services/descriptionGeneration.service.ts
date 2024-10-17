@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.utils';
 import { model } from '../config/ai.config';
 
 export async function generateProductDescription(imageData: ImageData): Promise<string> {
-    logger.info('Starting Google Generative AI processing');
+    logger.info('✅ Starting Generative AI for processing image data.');
 
     const prompt = `
         As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
@@ -30,15 +30,15 @@ export async function generateProductDescription(imageData: ImageData): Promise<
     `;
 
     try {
-        logger.info('Sending prompt to Google Generative AI');
+        logger.info('✅ Sending prompt to Generative AI.');
         const result = await model.generateContent(prompt);
 
         const generatedDescription = result.response.text();
-        logger.info('Google Generative AI processing completed', { generatedDescription });
+        logger.info('✅ Generative AI processing completed.');
         return generatedDescription;
 
     } catch (error: any) {
-        logger.error('Detailed error in Google Generative AI processing:', {
+        logger.error('❌ Detailed error in Google Generative AI processing:', {
             error: error.message,
             stack: error.stack,
             modelName: "gemini-1.5-flash-002",

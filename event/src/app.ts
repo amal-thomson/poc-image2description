@@ -17,7 +17,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use('/event', EventRoutes);
 app.use('*', () => {
-  throw new CustomError(404, 'Path not found.');
+  throw new CustomError(404, '❌ Path not found.');
 });
 
 app.use(errorMiddleware);

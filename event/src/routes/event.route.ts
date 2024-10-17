@@ -1,16 +1,10 @@
 import { Router } from 'express';
-import { logger } from '../utils/logger.utils';
 import { post } from '../controllers/event.controller';
+import { logger } from '../utils/logger.utils';
 
 const eventRouter: Router = Router();
 
-eventRouter.post('/', async (req, res, next) => {
-  logger.info('Event message received');
-  try {
-    await post(req, res);
-  } catch (error) {
-    next(error);
-  }
-});
+eventRouter.post('/', post);
 
 export default eventRouter;
+

@@ -4,7 +4,7 @@ import { createApiRoot } from '../client/create.client';
 import { logger } from '../utils/logger.utils';
 
 export async function updateProductDescription(productId: string, description: string): Promise<ClientResponse<any>> {
-    logger.info(`Updating product description for product ID: ${productId}`);
+    logger.info(`✅ Updating product description in Commerce Tools.`);
     const apiRoot = createApiRoot();
 
     const productResponse = await apiRoot.products().withId({ ID: productId }).get().execute();
@@ -27,6 +27,6 @@ export async function updateProductDescription(productId: string, description: s
         }
     }).execute();
 
-    logger.info('Product description updated successfully', { productId, updateResponse: updateResponse.body });
+    logger.info('✅ Product description updated successfully in Commerce Tools.');
     return updateResponse;
 }
