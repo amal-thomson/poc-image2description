@@ -1,0 +1,36 @@
+deployAs:
+  - name: event
+    applicationType: event
+    endpoint: /event
+    scripts:
+      postDeploy: npm install && npm run build && npm run connector:post-deploy
+      preUndeploy: npm install && npm run build && npm run connector:pre-undeploy
+    configuration:
+      standardConfiguration:
+        - key: CTP_REGION
+          description: commercetools Composable Commerce API region
+          required: true
+          default: "europe-west1.gcp"
+      securedConfiguration:
+        - key: CTP_PROJECT_KEY
+          description: commercetools Composable Commerce project key
+          required: true
+        - key: CTP_CLIENT_ID
+          description: commercetools Composable Commerce client ID
+          required: true
+        - key: CTP_CLIENT_SECRET
+          description: commercetools Composable Commerce client secret
+          required: true
+        - key: CTP_SCOPE
+          description: commercetools Composable Commerce client scope
+          required: true
+        - key: BASE64_ENCODED_GCP_SERVICE_ACCOUNT
+          description: GCP Service Account 
+          required: true
+        - key: GENERATIVE_AI_API_KEY
+          description: GENERATIVE AI API KEY to access Gemini 
+          required: true
+        - key: GEMINI_MODEL
+          description: GEMINI_MODEL version
+          required: true
+        

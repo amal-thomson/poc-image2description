@@ -1,0 +1,1 @@
+The Image to Description CT Connector automates product description generation for new products created in CommerceTools. By analyzing product images with Google Vision and Vertex AI, it crafts engaging descriptions tailored for e-commerce.
