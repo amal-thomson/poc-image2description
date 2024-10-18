@@ -17,12 +17,13 @@ export const post = async (request: Request, response: Response) => {
             return response.status(400).send({ error: '❌ No data found in Pub/Sub message.' });
         }
 
-        if (decodedData) {
+        const jsonData = JSON.parse(decodedData);
+
+        if (jsonData.resource?.typeId === 'product') {
             logger.info('✅ Event message received.');
             logger.info('✅ Processing event message.');
         }
 
-        const jsonData = JSON.parse(decodedData);
         const productId = jsonData.productProjection?.id;
         const imageUrl = jsonData.productProjection?.masterVariant?.images?.[0]?.url;
 
