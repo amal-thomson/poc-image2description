@@ -76,3 +76,90 @@ export const post = async (request: Request, response: Response) => {
         });
     }
 };
+
+// import { Request, Response } from 'express';
+// import { logger } from '../utils/logger.utils';
+// import { productAnalysis } from '../services/Vision AI/productAnalysis.service';
+// import { generateProductDescription } from '../services/Generative AI/descriptionGeneration.service';
+// import { updateProductDescription } from '../repository/Product/product.repository';
+// import { ProductAttribute } from '../interfaces/productAttribute.interface';
+
+// export const post = async (request: Request, response: Response) => {
+//     try {
+//         const pubSubMessage = request.body?.message;
+//         if (!pubSubMessage) {
+//             logger.error('❌ Pub/Sub message is missing in the request body.');
+//             return response.status(400).json({ error: '❌ Pub/Sub message is missing.' });
+//         }
+
+//         const decodedData = pubSubMessage.data
+//             ? Buffer.from(pubSubMessage.data, 'base64').toString().trim()
+//             : undefined;
+
+//         if (!decodedData) {
+//             logger.error('❌ No data found in Pub/Sub message.');
+//             return response.status(400).json({ error: '❌ No data found in Pub/Sub message.' });
+//         }
+
+//         const jsonData = JSON.parse(decodedData);
+
+//         if (jsonData?.resource?.typeId !== 'product') {
+//             logger.warn('⚠️ Invalid event type received, expected "product".');
+//             return response.status(400).json({ error: '⚠️ Invalid event type.' });
+//         }
+
+//         logger.info('✅ Event message received. Processing the event message.');
+
+//         const productId = jsonData?.productProjection?.id;
+//         const imageUrl = jsonData?.productProjection?.masterVariant?.images?.[0]?.url;
+
+//         if (!productId || !imageUrl) {
+//             logger.error('❌ Required productId or imageUrl is missing.');
+//             return response.status(400).json({ error: '❌ ProductId or imageUrl is missing.' });
+//         }
+
+//         const attributes: ProductAttribute[] = jsonData?.productProjection?.masterVariant?.attributes || [];
+//         const genDescriptionAttr = attributes.find(attr => attr.name === 'gen-description');
+//         const genDescriptionValue = genDescriptionAttr?.value;
+
+//         if (genDescriptionValue !== 'true') {
+//             logger.info('❌ Automatic description generation not enabled.', { productId, imageUrl });
+//             return response.status(200).json({
+//                 message: '❌ The option for automatic description generation is not enabled.',
+//                 productId,
+//                 imageUrl,
+//             });
+//         }
+
+//         logger.info('✅ Sending product image to Vision AI.');
+//         const imageData = await productAnalysis(imageUrl);
+
+//         logger.info('✅ Sending image data to Generative AI.');
+//         const description = await generateProductDescription(imageData);
+
+//         logger.info('✅ Sending image description to Commerce Tools.');
+//         const updateResponse = await updateProductDescription(productId, description);
+
+//         logger.info('✅ Process completed successfully.');
+//         return response.status(200).json({
+//             productId,
+//             imageUrl,
+//             description,
+//             productAnalysis: imageData,
+//             commerceToolsUpdate: updateResponse.body
+//         });
+
+//     } catch (error) {
+//         if (error instanceof Error) {
+//             logger.error('❌ Error processing request:', { message: error.message, stack: error.stack });
+//             return response.status(500).json({
+//                 error: '❌ Internal server error. Failed to process request.',
+//                 details: error.message,
+//             });
+//         }
+//         logger.error('❌ Unexpected error occurred.', { error });
+//         return response.status(500).json({
+//             error: '❌ Unexpected error occurred.',
+//         });
+//     }
+// };

@@ -3,46 +3,43 @@ import { logger } from '../../utils/logger.utils';
 import { model } from '../../config/ai.config';
 
 export async function generateProductDescription(imageData: ImageData): Promise<string> {
-    logger.info('✅ Starting Generative AI for processing image data.');
-
-    const prompt = `
-        As an expert e-commerce product copywriter, craft a captivating product description based on the following image analysis for an apparel item:
-        Labels: ${imageData.labels}
-        Objects detected: ${imageData.objects}
-        Dominant colors: ${imageData.colors.join(', ')}
-        Text detected: ${imageData.detectedText}
-        Web entities: ${imageData.webEntities}
-
-        Guidelines:
-        1. Use a professional, engaging tone suitable for e-commerce.
-        2. Specify the target category of the apparel (e.g., men's, women's, kids', boys', or girls').
-        3. Highlight the apparel's key features, such as style, fit, and comfort, and how they cater to the target category.
-        4. Describe the fabric confidently, focusing on its smoothness, breathability, or comfort (avoid uncertain phrases like "while not specified").
-        5. If colors are not properly detected, describe them in an appealing way (e.g., 'a crisp light color' or 'a subtle neutral tone'). If colors are detected, focus on other attributes of the apparel.
-        6. Suggest suitable occasions for wearing the item, such as casual outings, formal events, or workouts, and how it fits within the lifestyle of the target category.
-        7. Emphasize any unique styling possibilities, such as pairing with accessories or layering options.
-        8. Include care instructions if relevant (e.g., machine washable, hand wash recommended).
-        9. Keep the description concise but descriptive, within 100-150 words.
-        10. Include relevant sizing, fit information, or recommendations based on the detected elements, if available.
-        11. Additionally, generate a 'Key Features' section summarizing the apparel's key attributes, focusing on fabric, fit, and versatility.
-        
-        Please ensure no text styling such as bold (**), italics (*), or underlining (_) is used in the description or key features section.
-    `;
-
     try {
-        logger.info('✅ Sending prompt to Generative AI.');
+        logger.info('✅ Sending image data to Generative AI.');
+
+        const prompt = `You are a professional e-commerce product copywriter. Write a compelling product description for an apparel item based on the following image analysis:
+
+            Image Analysis Data:
+            - Labels: ${imageData.labels}
+            - Objects detected: ${imageData.objects}
+            - Dominant colors: ${imageData.colors.join(', ')}
+            - Text detected: ${imageData.detectedText}
+            - Web entities: ${imageData.webEntities}
+
+            Description Guidelines:
+            1. The description should be professional, concise, and engaging (100-150 words).
+            2. Clearly specify the target category (e.g., men's, women's, kids').
+            3. Highlight key features such as style, fit, and comfort relevant to the target category.
+            4. Confidently describe the fabric’s feel (e.g., soft, breathable) without using uncertain language like "while not specified".
+            5. If colors are unclear, use appealing general terms (e.g., 'a light, fresh tone' or 'a subtle neutral shade'). Focus on other features if color detection is poor.
+            6. Suggest occasions to wear the item (e.g., casual, formal, activewear) and describe how it fits the target category's lifestyle.
+            7. Mention styling options, like pairing with accessories or layering possibilities.
+            8. If applicable, include care instructions (e.g., machine washable).
+            9. Add sizing or fit information if relevant (e.g., slim fit, true to size).
+
+            Key Features Section:
+            - Include 3-5 key bullet points that summarize the product's main attributes, focusing on fabric, fit, and versatility.
+
+            Ensure no text styling (e.g., bold, italics) is applied in either section.`;
+
         const result = await model.generateContent(prompt);
+        if (!result?.response) throw new Error('❌ Generative AI response is null or undefined.');
 
         const generatedDescription = result.response.text();
-        logger.info('✅ Generative AI processing completed.');
+        logger.info('✅ Generative AI description generated successfully.');
         return generatedDescription;
 
     } catch (error: any) {
-        logger.error('❌ Detailed error in Google Generative AI processing:', {
-            error: error.message,
-            stack: error.stack,
-            modelName: "gemini-1.5-flash-002",
-        });
+        logger.error('❌ Error during description generation:', { message: error.message, stack: error.stack });
         throw error;
     }
 }
