@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger.utils';
-import { productAnalysis } from '../services/Vision AI/productAnalysis.service';
-import { generateProductDescription } from '../services/Generative AI/descriptionGeneration.service';
-import { updateProductDescription } from '../repository/Product/product.repository';
+import { productAnalysis } from '../services/vision-ai/productAnalysis.service';
+import { generateProductDescription } from '../services/generative-ai/descriptionGeneration.service';
+import { updateProductDescription } from '../repository/product/product.repository';
 import { ProductAttribute } from '../interfaces/productAttribute.interface';
 
 export const post = async (request: Request, response: Response) => {

@@ -1,0 +1,375 @@
+office-ayatacommerce@192 event % tree 
+.
+├── LICENSE
+├── jest.config.cjs
+├── package.json
+├── src
+│   ├── app.ts
+│   ├── client
+│   │   ├── build.client.ts
+│   │   └── create.client.ts
+│   ├── config
+│   │   └── ai.config.ts
+│   ├── connector
+│   │   ├── actions.ts
+│   │   ├── post-deploy.ts
+│   │   └── pre-undeploy.ts
+│   ├── controllers
+│   │   └── event.controller.ts
+│   ├── errors
+│   │   └── custom.error.ts
+│   ├── index.ts
+│   ├── interfaces
+│   │   ├── config.interface.ts
+│   │   ├── imageData.interface.ts
+│   │   └── productAttribute.interface.ts
+│   ├── middleware
+│   │   ├── auth.middleware.ts
+│   │   ├── error.middleware.ts
+│   │   └── http.middleware.ts
+│   ├── repository
+│   │   └── Product
+│   │       └── product.repository.ts
+│   ├── routes
+│   │   └── event.route.ts
+│   ├── services
+│   │   ├── Generative AI
+│   │   │   └── descriptionGeneration.service.ts
+│   │   └── Vision AI
+│   │       └── productAnalysis.service.ts
+│   ├── types
+│   │   └── index.types.ts
+│   ├── utils
+│   │   ├── __mocks__
+│   │   │   └── config.utils.ts
+│   │   ├── assert.utils.ts
+│   │   ├── config.utils.ts
+│   │   └── logger.utils.ts
+│   └── validators
+│       ├── env.validators.ts
+│       └── helpers.validators.ts
+├── tests
+│   ├── integration
+│   │   └── routes.spec.ts
+│   └── unit
+│       ├── descriptionGeneration.service.spec.ts
+│       ├── event.controller.spec.ts
+│       ├── product.repository.spec.ts
+│       └── productAnalysis.service.spec.ts
+├── tsconfig.json
+└── yarn.lock
+
+22 directories, 37 files
+
+event/src/config/ai.config.ts
+import { GoogleAuth } from 'google-auth-library';
+import vision from '@google-cloud/vision';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import * as dotenv from 'dotenv';
+dotenv.config();
+const BASE64_ENCODED_GCP_SERVICE_ACCOUNT = process.env.BASE64_ENCODED_GCP_SERVICE_ACCOUNT;
+if (!BASE64_ENCODED_GCP_SERVICE_ACCOUNT) {
+throw new Error("❌ BASE64_ENCODED_GCP_SERVICE_ACCOUNT environment variable is not set.");
+}
+const GENERATIVE_AI_API_KEY = process.env.GENERATIVE_AI_API_KEY;
+if (!GENERATIVE_AI_API_KEY) {
+throw new Error("❌ GENERATIVE_AI_API_KEY environment variable is not set.");
+}
+const GEMINI_MODEL = process.env.GEMINI_MODEL;
+if (!GEMINI_MODEL) {
+throw new Error("❌ GEMINI_MODEL environment variable is not set.");
+}
+const decodedServiceAccount = Buffer.from(BASE64_ENCODED_GCP_SERVICE_ACCOUNT, 'base64').toString('utf-8');
+const credentials = JSON.parse(decodedServiceAccount);
+const auth = new GoogleAuth({
+credentials: credentials,
+scopes: ['https://www.googleapis.com/auth/cloud-platform']
+});
+export const visionClient = new vision.ImageAnnotatorClient({ auth: auth });
+export const genAI = new GoogleGenerativeAI(GENERATIVE_AI_API_KEY);
+export const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+event/src/controllers/event.controller.ts
+import { Request, Response } from 'express';
+import { logger } from '../utils/logger.utils';
+import { productAnalysis } from '../services/Vision AI/productAnalysis.service';
+import { generateProductDescription } from '../services/Generative AI/descriptionGeneration.service';
+import { updateProductDescription } from '../repository/Product/product.repository';
+import { ProductAttribute } from '../interfaces/productAttribute.interface';
+export const post = async (request: Request, response: Response) => {
+    try {
+        const pubSubMessage = request.body.message;
+        const decodedData = pubSubMessage.data
+            ? Buffer.from(pubSubMessage.data, 'base64').toString().trim()
+            : undefined;
+        if (!decodedData) {
+            logger.error('❌ No data found in Pub/Sub message.');
+            return response.status(400).send({ error: '❌ No data found in Pub/Sub message.' });
+        }
+        const jsonData = JSON.parse(decodedData);
+        if (jsonData.resource?.typeId === 'product') {
+            logger.info('✅ Event message received.');
+            logger.info('✅ Processing event message.');
+        }
+        const productId = jsonData.productProjection?.id;
+        const imageUrl = jsonData.productProjection?.masterVariant?.images?.[0]?.url;
+        if (productId && imageUrl) {
+            const attributes: ProductAttribute[] = jsonData.productProjection?.masterVariant?.attributes || [];
+            const genDescriptionAttr = attributes.find(attr => attr.name === 'gen-description');
+            const genDescriptionValue = genDescriptionAttr?.value;
+            if (genDescriptionValue !== 'true') {
+                logger.info('❌ The option for automatic description generation is not enabled.', { productId, imageUrl });
+                return response.status(200).send({
+                    message: '❌ The option for automatic description generation is not enabled.',
+                    productId,
+                    imageUrl,
+                });
+            }
+            logger.info('✅ Sending product image to Vision AI.');
+            const imageData = await productAnalysis(imageUrl);
+            logger.info('✅ Sending image data to Generative AI.');
+            const description = await generateProductDescription(imageData);
+            logger.info('✅ Sending image description to Commerce Tools.');
+            const updateResponse = await updateProductDescription(productId, description);
+            logger.info('✅ Process completed successfully.');
+            logger.info('⌛ Waiting for next event message.');
+            return response.status(200).send({
+                productId,
+                imageUrl,
+                description,
+                productAnalysis: imageData,
+                commerceToolsUpdate: updateResponse.body
+            });
+        }
+    } catch (error) {
+        if (error instanceof Error) {
+            logger.error('❌ Error processing request', { error: error.message });
+            return response.status(500).send({
+                error: '❌ Internal server error. Failed to process request.',
+                details: error.message,
+            });
+        }
+        logger.error('❌ Unexpected error', { error });
+        return response.status(500).send({
+            error: '❌ Unexpected error occurred.',
+        });
+    }
+};
+
+event/src/services/Vision AI/productAnalysis.service.ts
+import { ImageData } from '../../interfaces/imageData.interface';
+import { logger } from '../../utils/logger.utils';
+import { visionClient } from '../../config/ai.config';
+export async function productAnalysis(imageURL: string): Promise<ImageData> {
+    try {
+        logger.info(`✅ Sending product image to Vision AI for analysis.`);
+        const request = {
+            image: { source: { imageUri: imageURL } },
+            features: [
+                { type: 'LABEL_DETECTION' },
+                { type: 'OBJECT_LOCALIZATION' },
+                { type: 'IMAGE_PROPERTIES' },
+                { type: 'TEXT_DETECTION' },
+                { type: 'SAFE_SEARCH_DETECTION' },
+                { type: 'WEB_DETECTION' }
+            ]
+        };
+        const [result] = await visionClient.annotateImage(request);
+        if (!result) throw new Error('❌ Vision AI analysis failed.');
+        const imageData = {
+            labels: result.labelAnnotations?.map((label: any) => label.description).join(', ') || 'No labels detected',
+            objects: result.localizedObjectAnnotations?.map((obj: any) => obj.name).join(', ') || 'No objects detected',
+            colors: result.imagePropertiesAnnotation?.dominantColors?.colors?.slice(0, 3).map((color: any) => {
+                const rgb = color.color;
+                return `${Math.round(rgb.red)}, ${Math.round(rgb.green)}, ${Math.round(rgb.blue)}`;
+            }) || ['No colors detected'],
+            detectedText: result.textAnnotations?.[0]?.description || 'No text detected',
+            webEntities: result.webDetection?.webEntities?.slice(0, 5).map((entity: any) => entity.description).join(', ') || 'No web entities detected'
+        };
+        logger.info('✅ Vision AI analysis completed successfully.');
+        return imageData;  
+    } catch (error: any) {
+        logger.error('❌ Error during Vision AI analysis:', { message: error.message, stack: error.stack });
+        throw error;
+    }
+}
+
+event/src/services/Generative AI/descriptionGeneration.service.ts
+import { ImageData } from '../../interfaces/imageData.interface';
+import { logger } from '../../utils/logger.utils';
+import { model } from '../../config/ai.config';
+export async function generateProductDescription(imageData: ImageData): Promise<string> {
+    try {
+        logger.info('✅ Sending image data to Generative AI.');
+        const prompt = `You are a professional e-commerce product copywriter. Write a compelling product description for an apparel item based on the following image analysis:
+            Image Analysis Data:
+            - Labels: ${imageData.labels}
+            - Objects detected: ${imageData.objects}
+            - Dominant colors: ${imageData.colors.join(', ')}
+            - Text detected: ${imageData.detectedText}
+            - Web entities: ${imageData.webEntities}
+            Description Guidelines:
+            1. The description should be professional, concise, and engaging (100-150 words).
+            2. Clearly specify the target category (e.g., men's, women's, kids').
+            3. Highlight key features such as style, fit, and comfort relevant to the target category.
+            4. Confidently describe the fabric’s feel (e.g., soft, breathable) without using uncertain language like "while not specified".
+            5. If colors are unclear, use appealing general terms (e.g., 'a light, fresh tone' or 'a subtle neutral shade'). Focus on other features if color detection is poor.
+            6. Suggest occasions to wear the item (e.g., casual, formal, activewear) and describe how it fits the target category's lifestyle.
+            7. Mention styling options, like pairing with accessories or layering possibilities.
+            8. If applicable, include care instructions (e.g., machine washable).
+            9. Add sizing or fit information if relevant (e.g., slim fit, true to size).
+            Key Features Section:
+            - Include 3-5 key bullet points that summarize the product's main attributes, focusing on fabric, fit, and versatility.
+            Ensure no text styling (e.g., bold, italics) is applied in either section.`;
+        const result = await model.generateContent(prompt);
+        if (!result?.response) throw new Error('❌ Generative AI response is null or undefined.');
+        const generatedDescription = result.response.text();
+        logger.info('✅ Generative AI description generated successfully.');
+        return generatedDescription;
+    } catch (error: any) {
+        logger.error('❌ Error during description generation:', { message: error.message, stack: error.stack });
+        throw error;
+    }
+}
+
+event/src/repository/Product/product.repository.ts
+import { ClientResponse } from '@commercetools/platform-sdk';
+import { ProductUpdateAction, ProductSetDescriptionAction } from '@commercetools/platform-sdk';
+import { createApiRoot } from '../../client/create.client';
+import { logger } from '../../utils/logger.utils';
+export async function updateProductDescription(productId: string, description: string): Promise<ClientResponse<any>> {
+    try {
+        logger.info(`✅ Fetching product details from Commerce Tools.`);
+        const apiRoot = createApiRoot();
+        const productResponse = await apiRoot.products().withId({ ID: productId }).get().execute();
+        const currentProduct = productResponse?.body;
+        if (!currentProduct) {
+            throw new Error(`❌ Product with ID ${productId} not found.`);
+        }
+        const currentVersion = currentProduct.version;
+        const updateActions: ProductUpdateAction[] = [
+            {
+                action: 'setDescription',
+                description: { en: description }
+            } as ProductSetDescriptionAction
+        ];
+        logger.info(`✅ Updating product description for productId: ${productId}.`);
+        const updateResponse = await apiRoot.products().withId({ ID: productId }).post({
+            body: { version: currentVersion, actions: updateActions }
+        }).execute();
+        logger.info('✅ Product description updated successfully in Commerce Tools.');
+        return updateResponse;
+    } catch (error: any) {
+        logger.error(`❌ Failed to update product description for productId ${productId}`, { message: error.message });
+        throw error;
+    }
+}
+
+event/src/errors/custom.error.ts
+type ErrorItem = {
+  statusCode: number | string;
+  message: string;
+  referencedBy?: string;
+};
+class CustomError extends Error {
+  statusCode: number | string;
+  message: string;
+  errors?: ErrorItem[];
+  constructor(
+    statusCode: number | string,
+    message: string,
+    errors?: ErrorItem[]
+  ) {
+    super(message);
+    this.statusCode = statusCode;
+    this.message = message;
+    if (errors) {
+      this.errors = errors;
+    }
+  }
+}
+export default CustomError;
+
+event/src/utils/__mocks__/config.utils.ts
+export const readConfiguration = jest.fn(() => ({
+  clientId: 'mockedClientId',
+  clientSecret: 'mockedClientSecret',
+  projectKey: 'mockedProjectKey',
+  scope: 'mockedScope',
+  region: 'mockedRegion',
+}));
+
+event/package.json
+{
+  "name": "event-typescript",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "node build/index.js",
+    "gcp-build": "tsc",
+    "start:dev": "concurrently -k \"tsc --watch\" \"nodemon -q build/index.js\"",
+    "build": "rimraf ./build && tsc",
+    "lint": "eslint . --ext .ts",
+    "prettier": "prettier --write '**/*.{js,ts}'",
+    "test": "jest --config jest.config.cjs",
+    "test:watch": "jest --watch",
+    "connector:post-deploy": "node build/connector/post-deploy.js",
+    "connector:pre-undeploy": "node build/connector/pre-undeploy.js"
+  },
+  "devDependencies": {
+    "@tsconfig/recommended": "^1.0.3",
+    "@types/express": "^4.17.14",
+    "@types/jest": "^29.2.0",
+    "@types/node": "^18.11.4",
+    "@types/validator": "^13.7.10",
+    "@typescript-eslint/eslint-plugin": "^5.45.1",
+    "@typescript-eslint/parser": "^5.45.1",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.46.0",
+    "jest": "^29.6.2",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.0.1",
+    "rimraf": "^5.0.1",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "@commercetools-backend/loggers": "^21.19.0",
+    "@commercetools/platform-sdk": "^4.1.0",
+    "@commercetools/sdk-client-v2": "^2.0.1",
+    "@google-cloud/vertexai": "^1.8.1",
+    "@google-cloud/vision": "^4.3.2",
+    "@google/generative-ai": "^0.21.0",
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "googleapis": "^144.0.0",
+    "listr2": "^6.6.1",
+    "validator": "^13.11.0"
+  }
+}
+
+event/jest.config.cjs
+module.exports = {
+  displayName: 'Tests Typescript Application - Event',
+  moduleDirectories: ['node_modules', 'src'],
+  testMatch: ['**/tests/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[tj]s?(x)'],
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+};
+
+event/tsconfig.json
+{
+  "extends": "@tsconfig/recommended/tsconfig.json",
+  "exclude": ["node_modules", "**/*.spec.ts"],
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "outDir": "./build",
+    "rootDir": "./src",
+    "inlineSourceMap": true
+  }
+}
+
